@@ -4,40 +4,40 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
-from typing import Dict, List, Optional
 import sys
+from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
-from fairseq import search, utils
-from fairseq.data import data_utils
-from fairseq.models import FairseqIncrementalDecoder
 from torch import Tensor
-from fairseq.ngram_repeat_block import NGramRepeatBlock
-from fairseq.sequence_generator import SequenceGenerator, EnsembleModel
+
+from fairseq.fairseq import search, utils
+from fairseq.fairseq.models import FairseqIncrementalDecoder
+from fairseq.fairseq.ngram_repeat_block import NGramRepeatBlock
+
 
 class UniSequenceGenerator(nn.Module):
     def __init__(
-        self,
-        models,
-        tgt_dict,
-        beam_size=1,
-        max_len_a=1,
-        max_len_b=15,
-        max_len=0,
-        min_len=1,
-        normalize_scores=True,
-        len_penalty=0.6,
-        unk_penalty=0.0,
-        temperature=1.0,
-        match_source_len=False,
-        no_repeat_ngram_size=0,
-        search_strategy=None,
-        eos=None,
-        symbols_to_strip_from_output=None,
-        lm_model=None,
-        external_qkv=False,
-        lm_weight=1.0,
+            self,
+            models,
+            tgt_dict,
+            beam_size=1,
+            max_len_a=1,
+            max_len_b=15,
+            max_len=0,
+            min_len=1,
+            normalize_scores=True,
+            len_penalty=0.6,
+            unk_penalty=0.0,
+            temperature=1.0,
+            match_source_len=False,
+            no_repeat_ngram_size=0,
+            search_strategy=None,
+            eos=None,
+            symbols_to_strip_from_output=None,
+            lm_model=None,
+            external_qkv=False,
+            lm_weight=1.0,
     ):
         """Generates translations of a given source sentence.
 
@@ -106,7 +106,7 @@ class UniSequenceGenerator(nn.Module):
         # As a module attribute, setting it would break in multithread
         # settings when the model is shared.
         self.should_set_src_lengths = (
-            hasattr(self.search, "needs_src_lengths") and self.search.needs_src_lengths
+                hasattr(self.search, "needs_src_lengths") and self.search.needs_src_lengths
         )
 
         self.model.eval()
@@ -124,10 +124,10 @@ class UniSequenceGenerator(nn.Module):
 
     @torch.no_grad()
     def forward(
-        self,
-        sample: Dict[str, Dict[str, Tensor]],
-        prefix_tokens: Optional[Tensor] = None,
-        bos_token: Optional[int] = None,
+            self,
+            sample: Dict[str, Dict[str, Tensor]],
+            prefix_tokens: Optional[Tensor] = None,
+            bos_token: Optional[int] = None,
     ):
         """Generate a batch of translations.
 
@@ -175,7 +175,7 @@ class UniSequenceGenerator(nn.Module):
 
     @torch.no_grad()
     def generate(
-        self, models, sample: Dict[str, Dict[str, Tensor]], **kwargs
+            self, models, sample: Dict[str, Dict[str, Tensor]], **kwargs
     ) -> List[List[Dict[str, Tensor]]]:
         """Generate translations. Match the api of other fairseq generators.
 
@@ -192,11 +192,11 @@ class UniSequenceGenerator(nn.Module):
         return self._generate(sample, **kwargs)
 
     def _generate(
-        self,
-        sample: Dict[str, Dict[str, Tensor]],
-        prefix_tokens: Optional[Tensor] = None,
-        constraints: Optional[Tensor] = None,
-        bos_token: Optional[int] = None,
+            self,
+            sample: Dict[str, Dict[str, Tensor]],
+            prefix_tokens: Optional[Tensor] = None,
+            constraints: Optional[Tensor] = None,
+            bos_token: Optional[int] = None,
     ):
         incremental_states = torch.jit.annotate(
             List[Dict[str, Dict[str, Optional[Tensor]]]],
@@ -234,7 +234,7 @@ class UniSequenceGenerator(nn.Module):
             self.max_len - 1,
         )
         assert (
-            self.min_len <= max_len
+                self.min_len <= max_len
         ), "min_len cannot be larger than max_len, please adjust these!"
         # compute the encoder output for each beam
         with torch.autograd.profiler.record_function("UniEnsembleModel: forward_encoder"):
@@ -317,7 +317,7 @@ class UniSequenceGenerator(nn.Module):
                     encoder_outs, reorder_state
                 )
             with torch.autograd.profiler.record_function(
-                "UniEnsembleModel: forward_decoder"
+                    "UniEnsembleModel: forward_decoder"
             ):
                 if step == 0:
                     prefix_lprobs, _ = self.model.forward_decoder(
@@ -326,10 +326,11 @@ class UniSequenceGenerator(nn.Module):
                         external_qkv=self.external_qkv,
                         begin=True,
                     )
-                    prefix_lprobs = prefix_lprobs.clone().unsqueeze(0).expand(beam_size, -1, -1, -1).reshape(bsz*beam_size, prefix_lprobs.size(1), -1)
-                    lprobs, avg_attn_scores = prefix_lprobs[:,step,:].clone(), None
+                    prefix_lprobs = prefix_lprobs.clone().unsqueeze(0).expand(beam_size, -1, -1, -1).reshape(
+                        bsz * beam_size, prefix_lprobs.size(1), -1)
+                    lprobs, avg_attn_scores = prefix_lprobs[:, step, :].clone(), None
                 elif step < len(prefix_tokens_with_bos[0]):
-                    lprobs, avg_attn_scores = prefix_lprobs[:,step,:].clone(), None
+                    lprobs, avg_attn_scores = prefix_lprobs[:, step, :].clone(), None
                 else:
                     lprobs, avg_attn_scores = self.model.forward_decoder(
                         tokens[:, : step + 1],
@@ -345,13 +346,13 @@ class UniSequenceGenerator(nn.Module):
             # handle max length constraint
             if step >= max_len:
                 lprobs[:, : self.eos] = -math.inf
-                lprobs[:, self.eos + 1 :] = -math.inf
+                lprobs[:, self.eos + 1:] = -math.inf
 
             # handle prefix tokens (possibly with different lengths)
             if (
-                prefix_tokens is not None
-                and step < prefix_tokens.size(1)
-                and step < max_len
+                    prefix_tokens is not None
+                    and step < prefix_tokens.size(1)
+                    and step < max_len
             ):
                 lprobs, tokens, scores = self._prefix_tokens(
                     step, lprobs, scores, tokens, prefix_tokens, beam_size
@@ -550,7 +551,7 @@ class UniSequenceGenerator(nn.Module):
         return finalized
 
     def _prefix_tokens(
-        self, step: int, lprobs, scores, tokens, prefix_tokens, beam_size: int
+            self, step: int, lprobs, scores, tokens, prefix_tokens, beam_size: int
     ):
         """Handle prefix tokens"""
         prefix_toks = prefix_tokens[:, step].unsqueeze(-1).repeat(1, beam_size).view(-1)
@@ -568,18 +569,18 @@ class UniSequenceGenerator(nn.Module):
         return tensor.view(-1, tensor.size(-1))
 
     def finalize_hypos(
-        self,
-        step: int,
-        bbsz_idx,
-        eos_scores,
-        tokens,
-        scores,
-        finalized: List[List[Dict[str, Tensor]]],
-        finished: List[bool],
-        beam_size: int,
-        attn: Optional[Tensor],
-        src_lengths,
-        max_len: int,
+            self,
+            step: int,
+            bbsz_idx,
+            eos_scores,
+            tokens,
+            scores,
+            finalized: List[List[Dict[str, Tensor]]],
+            finished: List[bool],
+            beam_size: int,
+            attn: Optional[Tensor],
+            src_lengths,
+            max_len: int,
     ):
         """Finalize hypothesis, store finalized information in `finalized`, and change `finished` accordingly.
         A sentence is finalized when {beam_size} finished items have been collected for it.
@@ -595,12 +596,12 @@ class UniSequenceGenerator(nn.Module):
         # tokens is (batch * beam, max_len). So the index_select
         # gets the newly EOS rows, then selects cols 1..{step + 2}
         tokens_clone = tokens.index_select(0, bbsz_idx)[
-            :, 1 : step + 2
-        ]  # skip the first index, which is EOS
+                       :, 1: step + 2
+                       ]  # skip the first index, which is EOS
 
         tokens_clone[:, step] = self.eos
         attn_clone = (
-            attn.index_select(0, bbsz_idx)[:, :, 1 : step + 2]
+            attn.index_select(0, bbsz_idx)[:, :, 1: step + 2]
             if attn is not None
             else None
         )
@@ -671,7 +672,7 @@ class UniSequenceGenerator(nn.Module):
             unique_unfin_idx: int = unique_s - (unique_sent << 32)
 
             if not finished[unique_sent] and self.is_finished(
-                step, unique_unfin_idx, max_len, len(finalized[unique_sent]), beam_size
+                    step, unique_unfin_idx, max_len, len(finalized[unique_sent]), beam_size
             ):
                 finished[unique_sent] = True
                 newly_finished.append(unique_unfin_idx)
@@ -679,12 +680,12 @@ class UniSequenceGenerator(nn.Module):
         return newly_finished
 
     def is_finished(
-        self,
-        step: int,
-        unfin_idx: int,
-        max_len: int,
-        finalized_sent_len: int,
-        beam_size: int,
+            self,
+            step: int,
+            unfin_idx: int,
+            max_len: int,
+            finalized_sent_len: int,
+            beam_size: int,
     ):
         """
         Check whether decoding for a sentence is finished, which
@@ -709,8 +710,8 @@ class UniEnsembleModel(nn.Module):
 
         self.has_incremental: bool = False
         if all(
-            hasattr(m, "decoder") and isinstance(m.decoder, FairseqIncrementalDecoder)
-            for m in models
+                hasattr(m, "decoder") and isinstance(m.decoder, FairseqIncrementalDecoder)
+                for m in models
         ):
             self.has_incremental = True
 
@@ -741,14 +742,14 @@ class UniEnsembleModel(nn.Module):
 
     @torch.jit.export
     def forward_decoder(
-        self,
-        tokens,
-        temperature: float = 1.0,
-        external_qkv=False,
-        begin=False
+            self,
+            tokens,
+            temperature: float = 1.0,
+            external_qkv=False,
+            begin=False
     ):
         model = self.models[0]
-        decoder_out = model.forward(tokens, external_qkv=external_qkv) # x, extra
+        decoder_out = model.forward(tokens, external_qkv=external_qkv)  # x, extra
 
         attn: Optional[Tensor] = None
         if not begin:
@@ -765,13 +766,13 @@ class UniEnsembleModel(nn.Module):
 
         if not begin:
             probs = probs[:, -1, :]
-        
+
         assert self.models_size == 1
         return probs, attn
 
     @torch.jit.export
     def reorder_encoder_out(
-        self, encoder_outs: Optional[List[Dict[str, List[Tensor]]]], new_order
+            self, encoder_outs: Optional[List[Dict[str, List[Tensor]]]], new_order
     ):
         """
         Reorder encoder output according to *new_order*.
@@ -795,9 +796,9 @@ class UniEnsembleModel(nn.Module):
 
     @torch.jit.export
     def reorder_incremental_state(
-        self,
-        incremental_states: List[Dict[str, Dict[str, Optional[Tensor]]]],
-        new_order,
+            self,
+            incremental_states: List[Dict[str, Dict[str, Optional[Tensor]]]],
+            new_order,
     ):
         if not self.has_incremental_states():
             return
