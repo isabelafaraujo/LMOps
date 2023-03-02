@@ -2,14 +2,16 @@ import datasets
 import random
 import torch
 import json
-import string 
+import string
 import numpy as np
 import copy
 from datasets import load_dataset, Dataset
 from sklearn.metrics import f1_score, accuracy_score
 
+
 class BaseTask(object):
-    def __init__(self, tokenizer, dictionary, seed=1, k=2, temp_index=0, gpt_maxlen=2048, permut_index=-1, chunk_k=16, chunk_len=-1, truncate=False, pad_space=False):
+    def __init__(self, tokenizer, dictionary, seed=1, k=2, temp_index=0, gpt_maxlen=2048, permut_index=-1, chunk_k=16,
+                 chunk_len=-1, truncate=False, pad_space=False):
         random.seed(seed)
         np.random.seed(seed)
         self.seed = seed
@@ -17,7 +19,7 @@ class BaseTask(object):
         self.tokenizer = tokenizer
         self.dictionary = dictionary
 
-        self.k = k 
+        self.k = k
         self.temp_index = temp_index
         self.class_num = 1
         self.gpt_maxlen = gpt_maxlen
@@ -38,7 +40,7 @@ class BaseTask(object):
 
     def get_dataset_train(self, data):
         return data.shuffle(seed=self.seed)
-    
+
     def get_dataset_valid(self, data):
         res = data.shuffle(seed=1)
         if len(res) > 4000:
@@ -65,16 +67,15 @@ class BaseTask(object):
             else:
                 true_k = i
                 break
-        
+
         print(f"NOTE: true K of baseline is {true_k}, max valid len is {max_valid_len}")
 
         for i in range(len(labels) // self.class_num):
-            for j in range(i*self.class_num, (i+1)*self.class_num):
+            for j in range(i * self.class_num, (i + 1) * self.class_num):
                 src_tokens_valid[j] = context_src_tokens + src_tokens_valid[j][1:]
-                gpt_loss_mask_valid[j] = [False]*len(context_src_tokens) + gpt_loss_mask_valid[j][1:]
+                gpt_loss_mask_valid[j] = [False] * len(context_src_tokens) + gpt_loss_mask_valid[j][1:]
 
         return src_tokens_valid, gpt_loss_mask_valid, labels, self.answer_set
-
 
     def get_data_for_manyshot(self):
         src_tokens_train, _, _, _ = self.tokenized_data('train')
@@ -93,7 +94,7 @@ class BaseTask(object):
             self.chunk_len = self.gpt_maxlen - max_valid_len - 1
 
         print(f"NOTE: max chunk length is changed to {self.chunk_len}")
-        
+
         if not self.truncate and not self.pad_space:
             context_src_tokens_list = [[0]]
             for i in range(len(src_tokens_train)):
@@ -105,7 +106,7 @@ class BaseTask(object):
                     context_src_tokens_list[-1] = context_src_tokens_list[-1] + src_tokens_train[i][1:]
                 else:
                     context_src_tokens_list.append(src_tokens_train[i])
-            
+
             if len(context_src_tokens_list) > 1:
                 context_src_tokens_list.pop(-1)
         elif self.pad_space:
@@ -121,10 +122,10 @@ class BaseTask(object):
                 else:
                     max_len = max(max_len, len(context_src_tokens_list[-1]))
                     context_src_tokens_list.append(src_tokens_train[i])
-            
+
             if len(context_src_tokens_list) > 1:
                 context_src_tokens_list.pop(-1)
-            
+
             for i in range(len(context_src_tokens_list)):
                 need_len = max_len - len(context_src_tokens_list[i])
                 # 1437 is the token id of space
@@ -141,14 +142,14 @@ class BaseTask(object):
                 else:
                     cur_len = len(context_src_tokens_list[-1])
                     assert cur_len >= self.chunk_len
-                    context_src_tokens_list[-1] = [0] + context_src_tokens_list[-1][cur_len-self.chunk_len+1:]
+                    context_src_tokens_list[-1] = [0] + context_src_tokens_list[-1][cur_len - self.chunk_len + 1:]
                     assert len(context_src_tokens_list[-1]) == self.chunk_len
                     context_src_tokens_list.append(src_tokens_train[i])
 
             if len(context_src_tokens_list) == 1:
                 cur_len = len(context_src_tokens_list[-1])
-                context_src_tokens_list[-1] = [0] + context_src_tokens_list[-1][cur_len-self.chunk_len+1:]
-            
+                context_src_tokens_list[-1] = [0] + context_src_tokens_list[-1][cur_len - self.chunk_len + 1:]
+
             if len(context_src_tokens_list) > 1:
                 context_src_tokens_list.pop(-1)
 
@@ -156,7 +157,6 @@ class BaseTask(object):
         context_src_tokens_list = np.array(context_src_tokens_list)
 
         return src_tokens_valid, gpt_loss_mask_valid, labels, context_src_tokens_list, self.answer_set
-
 
     def tokenized_data(self, split='train'):
         src_tokens, gpt_loss_mask, labels = [], [], []
@@ -166,7 +166,9 @@ class BaseTask(object):
 
         def encode(sentence):
             splitlines = list(filter(None, sentence.splitlines()))
-            return torch.cat([self.dictionary.encode_line(self.tokenizer.encode(line), add_if_not_exist=False) for line in splitlines]).tolist()
+            return torch.cat(
+                [self.dictionary.encode_line(self.tokenizer.encode(line), add_if_not_exist=False) for line in
+                 splitlines]).tolist()
 
         for i in range(min_num):
             example = dataset[i]
@@ -184,7 +186,7 @@ class BaseTask(object):
 
                 src_tokens.append([0] + input_token + label_token)
                 cur_length = len([0] + input_token + label_token)
-                gpt_loss_mask.append([False]*cur_length)
+                gpt_loss_mask.append([False] * cur_length)
                 labels.append(label)
                 max_len = max(max_len, cur_length)
             elif split == 'valid':
@@ -194,7 +196,7 @@ class BaseTask(object):
 
                 if label == -1:
                     self.answer_set.append(label_str)
-                
+
                 if i < 2:
                     print(f"input str valid is {input_str}")
                     print(f"label str valid is {label_str}")
@@ -207,12 +209,12 @@ class BaseTask(object):
                     if label != -1:
                         src_tokens.append([0] + input_token + label_token)
                         cur_length = len([0] + input_token + label_token)
-                        gpt_loss_mask.append([False]*(len(input_token)+1) + [True]*len(label_token))
+                        gpt_loss_mask.append([False] * (len(input_token) + 1) + [True] * len(label_token))
                     else:
                         src_tokens.append([0] + input_token)
                         cur_length = len([0] + input_token) + 50
-                        gpt_loss_mask.append([False]*(len(input_token)+1))
-                    
+                        gpt_loss_mask.append([False] * (len(input_token) + 1))
+
                     labels.append(label)
                     max_len = max(max_len, cur_length)
 
@@ -230,16 +232,21 @@ class WiC(BaseTask):
 
     def templates_set_without_newline(self):
         return [
-            ("{sentence1} {sentence2} Question: Is the word \"{word}\" used in the same way in the two sentences above? Answer:", " {answer}", ["No", "Yes"])
+            (
+                "{sentence1} {sentence2} Question: Is the word \"{word}\" used in the same way in the two sentences "
+                "above? Answer:",
+                " {answer}", ["No", "Yes"])
         ]
 
     def preprocess_example(self, example):
         input_temp, output_temp, options = self.templates[self.temp_index]
-        input_str = input_temp.replace("{word}", example["word"]).replace("{sentence1}", example["sentence1"]).replace("{sentence2}", example["sentence2"])
+        input_str = input_temp.replace("{word}", example["word"]).replace("{sentence1}", example["sentence1"]).replace(
+            "{sentence2}", example["sentence2"])
         input_str = [input_str] * self.class_num
         answer_str = [output_temp.replace("{answer}", options[i]) for i in range(len(options))]
         label = example["label"]
         return input_str, answer_str, label
+
 
 class WSC(BaseTask):
     def __init__(self, *args, **kwargs):
@@ -252,16 +259,21 @@ class WSC(BaseTask):
 
     def templates_set_without_newline(self):
         return [
-            ("{text} In the previous sentence, does the pronoun \"{span2_text}\" refer to {span1_text}?", " {answer}", ["No", "Yes"])
+            ("{text} In the previous sentence, does the pronoun \"{span2_text}\" refer to {span1_text}?", " {answer}",
+             ["No", "Yes"])
         ]
 
     def preprocess_example(self, example):
         input_temp, output_temp, options = self.templates[self.temp_index]
-        input_str = input_temp.replace("{text}", example["text"]).replace("{span2_text}", example["span2_text"]).replace("{span1_text}", example["span1_text"])
+        input_str = input_temp.replace("{text}", example["text"]).replace("{span2_text}",
+                                                                          example["span2_text"]).replace("{span1_text}",
+                                                                                                         example[
+                                                                                                             "span1_text"])
         input_str = [input_str] * self.class_num
         answer_str = [output_temp.replace("{answer}", options[i]) for i in range(len(options))]
         label = example["label"]
         return input_str, answer_str, label
+
 
 class MultiRC(BaseTask):
     def __init__(self, *args, **kwargs):
@@ -274,19 +286,36 @@ class MultiRC(BaseTask):
 
     def templates_set_without_newline(self):
         return [
-            ("{paragraph} Question: \"{question}\" Response: \"{response}\" Does the response correctly answer the question? Answer:", " {answer}", ["No", "Yes"]),
-            ("{paragraph} Question: \"{question}\" Response: \"{response}\" Based on the paragraph, is the response to the question is factually correct?", " {answer}", ["No", "Yes"]),
-            ("{paragraph} Based on the paragraph, does the response \"{response}\" correctly answer the question \"{question}\"?", " {answer}", ["No", "Yes"]),
-            ("{paragraph} According to the above paragraph, the correct answer to the question \"{question}\" is \"{response}\"? Answer:", " {answer}", ["No", "Yes"]),
-            ("{paragraph} Question: \"{question}\" Answer: \"{response}\" Is this answer to the question True or False?", " {answer}", ["False", "True"])
+            (
+                "{paragraph} Question: \"{question}\" Response: \"{response}\" Does the response correctly answer the "
+                "question? Answer:",
+                " {answer}", ["No", "Yes"]),
+            (
+                "{paragraph} Question: \"{question}\" Response: \"{response}\" Based on the paragraph, is the response to "
+                "the question is factually correct?",
+                " {answer}", ["No", "Yes"]),
+            (
+                "{paragraph} Based on the paragraph, does the response \"{response}\" correctly answer the question \"{"
+                "question}\"?",
+                " {answer}", ["No", "Yes"]),
+            (
+                "{paragraph} According to the above paragraph, the correct answer to the question \"{question}\" is \"{"
+                "response}\"? Answer:",
+                " {answer}", ["No", "Yes"]),
+            (
+                "{paragraph} Question: \"{question}\" Answer: \"{response}\" Is this answer to the question True or False?",
+                " {answer}", ["False", "True"])
         ]
 
     def preprocess_example(self, example):
         input_temp, output_temp, options = self.templates[self.temp_index]
-        input_str = input_temp.replace("{paragraph}", example["paragraph"]).replace("{question}", example["question"]).replace("{response}", example["answer"])
+        input_str = input_temp.replace("{paragraph}", example["paragraph"]).replace("{question}",
+                                                                                    example["question"]).replace(
+            "{response}", example["answer"])
         answer_str = output_temp.replace("{answer}", options[example["label"]])
         options_list = [output_temp.replace("{answer}", options[i]) for i in range(len(options))]
         return input_str, answer_str, options_list
+
 
 # completion
 class HellaSwag(BaseTask):
@@ -304,6 +333,7 @@ class HellaSwag(BaseTask):
             answer_str.append(' ' + example["endings"][i])
         label = int(example["label"])
         return input_str, answer_str, label
+
 
 class COPA(BaseTask):
     def __init__(self, *args, **kwargs):
@@ -340,7 +370,7 @@ class COPA(BaseTask):
             else:
                 text_first = text_first + " so"
             input_str = [text_first] * self.class_num
-            answer_str = [' '+example["choice1"], ' '+example["choice2"]]
+            answer_str = [' ' + example["choice1"], ' ' + example["choice2"]]
         elif self.temp_index == 4:
             if text_first[-1] == '.':
                 text_first = text_first[:-1]
@@ -353,7 +383,8 @@ class COPA(BaseTask):
         label = example["label"]
         return input_str, answer_str, label
 
-# download manually 
+
+# download manually
 class StoryCloze(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -363,11 +394,13 @@ class StoryCloze(BaseTask):
         self.class_num = 2
 
     def preprocess_example(self, example):
-        input_str = example["input_sentence_1"] + ' ' + example["input_sentence_2"] + ' ' + example["input_sentence_3"] + ' ' + example["input_sentence_4"] 
+        input_str = example["input_sentence_1"] + ' ' + example["input_sentence_2"] + ' ' + example[
+            "input_sentence_3"] + ' ' + example["input_sentence_4"]
         input_str = [input_str] * self.class_num
-        answer_str = [' '+example["sentence_quiz1"], ' '+example["sentence_quiz2"]]
+        answer_str = [' ' + example["sentence_quiz1"], ' ' + example["sentence_quiz2"]]
         label = int(example["answer_right_ending"]) - 1
         return input_str, answer_str, label
+
 
 # Winograd tasks
 class Winogrande(BaseTask):
@@ -381,11 +414,12 @@ class Winogrande(BaseTask):
     def preprocess_example(self, example):
         cut_index = example["sentence"].index('_')
         text_first = example["sentence"][:cut_index]
-        text_second = example["sentence"][cut_index+1:]
-        input_str = [text_first+example["option1"], text_first+example["option2"]]
+        text_second = example["sentence"][cut_index + 1:]
+        input_str = [text_first + example["option1"], text_first + example["option2"]]
         answer_str = [text_second] * self.class_num
         label = int(example["answer"]) - 1
         return input_str, answer_str, label
+
 
 # remove | only test split
 class Winograd(BaseTask):
@@ -398,10 +432,10 @@ class Winograd(BaseTask):
 
     def preprocess_example(self, example):
         text_first = example["text"][:example["pronoun_loc"]]
-        text_second = example["text"][example["pronoun_loc"]+len(example["pronoun"]):]
+        text_second = example["text"][example["pronoun_loc"] + len(example["pronoun"]):]
         input_str = []
         for option in example["options"]:
-            input_str.append(text_first+option)
+            input_str.append(text_first + option)
         answer_str = [text_second] * self.class_num
         label = example["label"]
         return input_str, answer_str, label
@@ -419,7 +453,7 @@ class PIQA(BaseTask):
     def preprocess_example(self, example):
         input_str = example["goal"]
         input_str = [input_str] * self.class_num
-        answer_str = [' '+example["sol1"], ' '+example["sol2"]]
+        answer_str = [' ' + example["sol1"], ' ' + example["sol2"]]
         label = example["label"]
         return input_str, answer_str, label
 
@@ -437,8 +471,8 @@ class OBQA(BaseTask):
         input_str = [input_str] * 4
         answer_str = []
         for i in range(4):
-            answer_str.append(' '+example["choices"]["text"][i])
-        
+            answer_str.append(' ' + example["choices"]["text"][i])
+
         if example["answerKey"] == 'A':
             label = 0
         elif example["answerKey"] == 'B':
@@ -466,8 +500,8 @@ class ARCE(BaseTask):
             return None, None, None
 
         for i in range(4):
-            answer_str.append(' '+example["choices"]["text"][i])
-        
+            answer_str.append(' ' + example["choices"]["text"][i])
+
         if example["answerKey"] == 'A':
             label = 0
         elif example["answerKey"] == 'B':
@@ -498,8 +532,8 @@ class ARCC(BaseTask):
             return None, None, None
 
         for i in range(4):
-            answer_str.append(' '+example["choices"]["text"][i])
-        
+            answer_str.append(' ' + example["choices"]["text"][i])
+
         if example["answerKey"] == 'A':
             label = 0
         elif example["answerKey"] == 'B':
@@ -512,6 +546,7 @@ class ARCC(BaseTask):
             label = int(example["answerKey"]) - 1
         return input_str, answer_str, label
 
+
 class RACEm(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -520,7 +555,7 @@ class RACEm(BaseTask):
         self.dataset_valid = self.get_dataset_valid(dataset['validation'])
         self.templates = self.templates_set_without_newline()
         self.class_num = 4
-    
+
     def templates_set_without_newline(self):
         return [
             ("Passage: {article} Question: {question} Answer:", " {answer}")
@@ -547,6 +582,7 @@ class RACEm(BaseTask):
         else:
             label = int(example["answer"]) - 1
         return input_str, answer_str, label
+
 
 class RACEh(BaseTask):
     def __init__(self, *args, **kwargs):
@@ -556,7 +592,7 @@ class RACEh(BaseTask):
         self.dataset_valid = self.get_dataset_valid(dataset['validation'])
         self.templates = self.templates_set_without_newline()
         self.class_num = 4
-    
+
     def templates_set_without_newline(self):
         return [
             ("Passage: {article} Question: {question} Answer:", " {answer}")
@@ -583,6 +619,7 @@ class RACEh(BaseTask):
         else:
             label = int(example["answer"]) - 1
         return input_str, answer_str, label
+
 
 # glue
 class SST2(BaseTask):
@@ -624,7 +661,9 @@ class AGNews(BaseTask):
 
     def templates_set_without_newline(self):
         return [
-            ("Classify the news articles into the categories of World, Sports, Business, and Technology. Article: {text} Answer:", " {answer}", ["World", "Sports", "Business", "Technology"]),
+            (
+                "Classify the news articles into the categories of World, Sports, Business, and Technology. Article: {text} Answer:",
+                " {answer}", ["World", "Sports", "Business", "Technology"]),
             ("News: {text} Type:", " {answer}", ["World", "Sports", "Business", "Technology"]),
         ]
 
@@ -665,6 +704,7 @@ class SST5(BaseTask):
         label = example["label"]
         return input_str, answer_str, label
 
+
 class TREC(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -677,7 +717,8 @@ class TREC(BaseTask):
 
     def templates_set_without_newline(self):
         return [
-            ("Question: {text} Type:", " {answer}", ["Description", "Entity", "Expression", "Person", "Number", "Location"])
+            ("Question: {text} Type:", " {answer}",
+             ["Description", "Entity", "Expression", "Person", "Number", "Location"])
         ]
 
     def preprocess_example(self, example, split="train"):
@@ -690,6 +731,7 @@ class TREC(BaseTask):
         answer_str = [output_temp.replace("{answer}", options[i]) for i in range(len(options))]
         label = example["label-coarse"]
         return input_str, answer_str, label
+
 
 class RTE(BaseTask):
     def __init__(self, *args, **kwargs):
@@ -717,6 +759,7 @@ class RTE(BaseTask):
         label = example["label"]
         return input_str, answer_str, label
 
+
 class IMDB(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -741,6 +784,7 @@ class IMDB(BaseTask):
         answer_str = [output_temp.replace("{answer}", options[i]) for i in range(len(options))]
         label = example["label"]
         return input_str, answer_str, label
+
 
 class Subj(BaseTask):
     def __init__(self, *args, **kwargs):
@@ -767,6 +811,7 @@ class Subj(BaseTask):
         label = example["label"]
         return input_str, answer_str, label
 
+
 class DBPedia(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -778,7 +823,9 @@ class DBPedia(BaseTask):
 
     def templates_set_without_newline(self):
         return [
-            ("Input: {content} Type:", " {answer}", ["company", "school", "artist", "athlete", "politics", "transportation", "building", "nature", "village", "animal", "plant", "album", "film", "book"])
+            ("Input: {content} Type:", " {answer}",
+             ["company", "school", "artist", "athlete", "politics", "transportation", "building", "nature", "village",
+              "animal", "plant", "album", "film", "book"])
         ]
 
     def preprocess_example(self, example, split="train"):
@@ -791,6 +838,7 @@ class DBPedia(BaseTask):
         answer_str = [output_temp.replace("{answer}", options[i]) for i in range(len(options))]
         label = example["label"]
         return input_str, answer_str, label
+
 
 class MR(BaseTask):
     def __init__(self, *args, **kwargs):
@@ -817,6 +865,7 @@ class MR(BaseTask):
         label = example["label"]
         return input_str, answer_str, label
 
+
 class CB(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -828,11 +877,17 @@ class CB(BaseTask):
 
     def templates_set_without_newline(self):
         return [
-            ("{premise} Question: {hypothesis}. True, False, or Neither? Answer:", " {answer}", ["True", "False", "Neither"]),
-            ("{premise} Based on the paragraph above can we conclude that \"{hypothesis}\"? Yes, No, or Maybe?", " Answer: {answer}.", ["Yes", "No", "Maybe"]),
+            ("{premise} Question: {hypothesis}. True, False, or Neither? Answer:", " {answer}",
+             ["True", "False", "Neither"]),
+            ("{premise} Based on the paragraph above can we conclude that \"{hypothesis}\"? Yes, No, or Maybe?",
+             " Answer: {answer}.", ["Yes", "No", "Maybe"]),
             ("{premise} Can we infer the following? {hypothesis}.", " {answer}", ["Yes", "No", "Maybe"]),
-            ("Read the following paragraph and determine if the hypothesis is true: {premise} Hypothesis: {hypothesis}.", " {answer}", ["Yes", "No", "Maybe"]),
-            ("Can we draw the following hypothesis from the context? Context: {premise} Hypothesis: {hypothesis}. Answer:", " {answer}", ["Yes", "No", "Maybe"])
+            (
+                "Read the following paragraph and determine if the hypothesis is true: {premise} Hypothesis: {hypothesis}.",
+                " {answer}", ["Yes", "No", "Maybe"]),
+            (
+                "Can we draw the following hypothesis from the context? Context: {premise} Hypothesis: {hypothesis}. Answer:",
+                " {answer}", ["Yes", "No", "Maybe"])
         ]
 
     def preprocess_example(self, example):
@@ -842,6 +897,7 @@ class CB(BaseTask):
         answer_str = [output_temp.replace("{answer}", options[i]) for i in range(len(options))]
         label = example["label"]
         return input_str, answer_str, label
+
 
 # qa
 class BoolQ(BaseTask):
@@ -856,11 +912,17 @@ class BoolQ(BaseTask):
     def templates_set_without_newline(self):
         return [
             ("Passage: {passage} Question: {question}? Answer:", " {answer}", ["No", "Yes"]),
-            ("Passage: {passage} After reading this passage, I have a question: {question}? True or False?", " {answer}", ["False", "True"]),
+            (
+                "Passage: {passage} After reading this passage, I have a question: {question}? True or False?",
+                " {answer}",
+                ["False", "True"]),
             ("Text: {passage} Question: {question}? Answer:", " {answer}", ["No", "Yes"]),
-            ("{passage} Based on the above text, what's the best answer to this question: {question}?", " {answer}", ["No", "Yes"]),
-            ("Based on the following passage, {question}? {passage} Please answer yes or no.", " {answer}", ["No", "Yes"]),
-            ("Exercise: read the text and answer the question by True or False. Text: {passage} Question: {question}?", " {answer}", ["False", "True"])
+            ("{passage} Based on the above text, what's the best answer to this question: {question}?", " {answer}",
+             ["No", "Yes"]),
+            ("Based on the following passage, {question}? {passage} Please answer yes or no.", " {answer}",
+             ["No", "Yes"]),
+            ("Exercise: read the text and answer the question by True or False. Text: {passage} Question: {question}?",
+             " {answer}", ["False", "True"])
         ]
 
     def preprocess_example(self, example, split="train"):
@@ -870,6 +932,7 @@ class BoolQ(BaseTask):
         answer_str = [output_temp.replace("{answer}", options[i]) for i in range(len(options))]
         label = example["label"]
         return input_str, answer_str, label
+
 
 # open-ended QA
 class NQ(BaseTask):
@@ -893,6 +956,7 @@ class NQ(BaseTask):
         answer_str = [output_temp.replace("{answer}", answer) for answer in example["answer"]]
         return input_str, answer_str, -1
 
+
 class WebQS(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -914,6 +978,7 @@ class WebQS(BaseTask):
         answer_str = [output_temp.replace("{answer}", answer) for answer in example["answers"]]
         return input_str, answer_str, -1
 
+
 class TriviaQA(BaseTask):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -934,6 +999,7 @@ class TriviaQA(BaseTask):
         input_str = [input_str] * self.class_num
         answer_str = [output_temp.replace("{answer}", answer) for answer in example["answer"]["aliases"]]
         return input_str, answer_str, -1
+
 
 # extractive QA
 class SQuADv2(BaseTask):
@@ -960,6 +1026,7 @@ class SQuADv2(BaseTask):
         else:
             answer_str = [output_temp.replace("{answer}", "none")]
         return input_str, answer_str, -1
+
 
 class SQuAD(BaseTask):
     def __init__(self, *args, **kwargs):
