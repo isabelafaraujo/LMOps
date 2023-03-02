@@ -6,9 +6,12 @@ from argparse import Namespace
 import logging
 
 from typing import Any, Dict, Iterator, List
-from fairseq import metrics, search, tokenizer, utils
 
-from fairseq.data import (
+from torch.utils.data import default_collate
+
+from fairseq.fairseq import search, tokenizer, utils
+
+from fairseq.fairseq.data import (
     data_utils,
     Dictionary,
     BaseWrapperDataset,
@@ -29,21 +32,23 @@ from fairseq.data import (
     PadDataset,
 )
 
-from fairseq.data import (
+from fairseq.fairseq.data import (
     Dictionary,
     TokenBlockDataset,
     data_utils,
     iterators,
 )
 
-from fairseq.tasks import register_task, FairseqDataclass, FairseqTask
-from fairseq.data.encoders.gpt2_bpe import GPT2BPE
+from fairseq.fairseq.tasks import register_task, FairseqDataclass, FairseqTask
+from fairseq.fairseq.data.encoders.gpt2_bpe import GPT2BPE
 from dataclasses import dataclass, field
 from omegaconf import II, MISSING
 from typing import Optional
-from fairseq import utils
+from fairseq.fairseq import utils
 
-from struprompting.tasks.fewshot_task import CB, BoolQ, COPA, MultiRC, HellaSwag, StoryCloze, Winogrande, Winograd, WiC, WSC, PIQA, OBQA, ARCC, ARCE, SST2, AGNews, SST5, TREC, RTE, IMDB, Subj, DBPedia, MR, NQ, WebQS, TriviaQA, RACEm, RACEh, COQA, SQuADv2, SQuAD
+from fewshot_task import CB, BoolQ, COPA, MultiRC, HellaSwag, StoryCloze, Winogrande, Winograd, WiC, \
+    WSC, PIQA, OBQA, ARCC, ARCE, SST2, AGNews, SST5, TREC, RTE, IMDB, Subj, DBPedia, MR, NQ, WebQS, TriviaQA, RACEm, \
+    RACEh, COQA, SQuADv2, SQuAD
 
 DEFAULT_ENCODER_JSON = "https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/encoder.json"
 DEFAULT_VOCAB_BPE = "https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/vocab.bpe"
@@ -143,7 +148,7 @@ class LargeICLEvalConfig(FairseqDataclass):
         metadata={
             "help": "use space to pad demonstrations to a constant length"
         },
-    ) 
+    )
 
 
 @register_task('large_icl_eval', dataclass=LargeICLEvalConfig)
@@ -159,14 +164,17 @@ class LargeICLEval(FairseqTask):
         self.max_pos_train = 0
         self.demons_num = 0
 
-        self.fewshot_task = task_map[self.cfg.eval_data](tokenizer=self.tokenizer, dictionary=self.dictionary, k=cfg.k, temp_index=cfg.temp_index, seed=cfg.seed, chunk_k=cfg.chunk_k, chunk_len=cfg.chunk_len, permut_index=cfg.permut_index, truncate=cfg.truncate, pad_space=cfg.pad_space)
+        self.fewshot_task = task_map[self.cfg.eval_data](tokenizer=self.tokenizer, dictionary=self.dictionary, k=cfg.k,
+                                                         temp_index=cfg.temp_index, seed=cfg.seed, chunk_k=cfg.chunk_k,
+                                                         chunk_len=cfg.chunk_len, permut_index=cfg.permut_index,
+                                                         truncate=cfg.truncate, pad_space=cfg.pad_space)
 
         self.src_tokens, self.gpt_loss_mask, self.labels, self.context_src_tokens, self.answer_set = self.fewshot_task.get_data_for_manyshot()
 
         for tmp_train_tokens in self.context_src_tokens:
-            self.max_pos_train = max(self.max_pos_train, len(tmp_train_tokens)-1)
+            self.max_pos_train = max(self.max_pos_train, len(tmp_train_tokens) - 1)
         self.demons_num = len(self.context_src_tokens)
-        
+
         # open-ended generation
         self.generator = None
         self.models = None
@@ -188,7 +196,7 @@ class LargeICLEval(FairseqTask):
         return cls(cfg, dictionary, tokenizer)
 
     def build_model(self, cfg, from_checkpoint=False):
-        from fairseq import models
+        from fairseq.fairseq import models
 
         model = models.build_model(cfg, self, from_checkpoint)
         self.generator = self.build_generator([model], self.cfg)
@@ -205,8 +213,8 @@ class LargeICLEval(FairseqTask):
                     'src_tokens': RightPadDataset(
                         src_tokens,
                         pad_idx=self.dictionary.pad(),
-                        pad_to_length=self.max_pos_train+1,
-                    ),  
+                        pad_to_length=self.max_pos_train + 1,
+                    ),
                     'src_lengths': NumelDataset(src_tokens, reduce=False),
                 },
                 'targets': RightPadDataset(
@@ -227,7 +235,7 @@ class LargeICLEval(FairseqTask):
                     'src_tokens': RightPadDataset(
                         src_tokens,
                         pad_idx=self.dictionary.pad(),
-                    ),  
+                    ),
                     'gpt_loss_mask': RightPadDataset(
                         gpt_loss_mask,
                         pad_idx=False,
@@ -250,24 +258,20 @@ class LargeICLEval(FairseqTask):
         return self.datasets[split]
 
     def build_generator(
-        self,
-        models,
-        args,
-        seq_gen_cls=None,
-        extra_gen_cls_kwargs=None,
-        prefix_allowed_tokens_fn=None,
+            self,
+            models,
+            args,
+            seq_gen_cls=None,
+            extra_gen_cls_kwargs=None,
+            prefix_allowed_tokens_fn=None,
     ):
         if getattr(args, "score_reference", False):
-            from fairseq.sequence_scorer import SequenceScorer
+            from fairseq.fairseq.sequence_scorer import SequenceScorer
 
             return SequenceScorer(
                 self.dictionary,
                 compute_alignment=getattr(args, "print_alignment", False),
             )
-
-        from struprompting.models.unisequence_generator import (
-            UniSequenceGenerator,
-        )
 
         # Choose search strategy. Defaults to Beam Search.
         sampling = getattr(args, "sampling", False)
@@ -281,16 +285,16 @@ class LargeICLEval(FairseqTask):
         if prefix_allowed_tokens_fn is None:
             prefix_allowed_tokens_fn = getattr(args, "prefix_allowed_tokens_fn", None)
         if (
-            sum(
-                int(cond)
-                for cond in [
-                    sampling,
-                    diverse_beam_groups > 0,
-                    match_source_len,
-                    diversity_rate > 0,
-                ]
-            )
-            > 1
+                sum(
+                    int(cond)
+                    for cond in [
+                        sampling,
+                        diverse_beam_groups > 0,
+                        match_source_len,
+                        diversity_rate > 0,
+                    ]
+                )
+                > 1
         ):
             raise ValueError("Provided Search parameters are mutually exclusive.")
         assert sampling_topk < 0 or sampling, "--sampling-topk requires --sampling"
@@ -332,7 +336,7 @@ class LargeICLEval(FairseqTask):
 
         extra_gen_cls_kwargs = extra_gen_cls_kwargs or {}
         if seq_gen_cls is None:
-            seq_gen_cls = UniSequenceGenerator
+            seq_gen_cls = models.unisequence_generator.UniSequenceGenerator
 
         return seq_gen_cls(
             models,
@@ -380,7 +384,7 @@ class RawArrayDataset(FairseqDataset):
             try:
                 self._sizes = np.array([len(x) for x in self.dataset])
             except:
-                self._sizes =  np.array([1 for x in self.dataset])
+                self._sizes = np.array([1 for x in self.dataset])
 
     def __getitem__(self, index):
         if type(self.dataset[index][0]) != list:
@@ -410,6 +414,7 @@ class RawArrayDataset(FairseqDataset):
     def size(self, index):
         return self.dataset.size(index)
 
+
 class PadDataset(BaseWrapperDataset):
     def __init__(self, dataset, pad_idx, left_pad, pad_to_length=None):
         super().__init__(dataset)
@@ -418,7 +423,9 @@ class PadDataset(BaseWrapperDataset):
         self.pad_to_length = pad_to_length
 
     def collater(self, samples):
-        return data_utils.collate_tokens(samples, self.pad_idx, left_pad=self.left_pad, pad_to_length=self.pad_to_length)
+        return data_utils.collate_tokens(samples, self.pad_idx, left_pad=self.left_pad,
+                                         pad_to_length=self.pad_to_length)
+
 
 class RightPadDataset(PadDataset):
     def __init__(self, dataset, pad_idx, pad_to_length=None):
