@@ -1,10 +1,8 @@
-import math
-import re
-import sys
-import time
 import torch
-from infinibatch.iterators import CheckpointableIterator
-from struprompting.data import utils
+
+from fairseq.fairseq.utils import apply_to_sample
+from infinibatch.infinibatch.iterators import CheckpointableIterator
+
 
 class BaseBatchGen(CheckpointableIterator):
     """
@@ -23,13 +21,13 @@ class BaseBatchGen(CheckpointableIterator):
         Build infinibatch iterator and assign to self._iter
         """
         raise NotImplementedError()
-    
+
     def _move_to_tensor(self, batch):
 
         def to_tensor(x):
             return torch.tensor(x)
 
-        return utils.apply_to_sample(to_tensor, batch)
+        return apply_to_sample(to_tensor, batch)
 
     @property
     def iterator(self):
@@ -44,16 +42,16 @@ class BaseBatchGen(CheckpointableIterator):
 
     def __next__(self):
         return next(self._iter)
-    
+
     def setstate(self, value):
         self._iter.setstate(value)
-    
+
     def getstate(self):
         return self._iter.getstate()
-    
+
     def close(self):
         self._iter.close()
-    
+
     def __len__(self) -> int:
         return 819200000
 
