@@ -1,50 +1,31 @@
-import os
-import json
-import torch
-import numpy as np
-from argparse import Namespace
 import logging
+from argparse import Namespace
+from dataclasses import dataclass, field
+from typing import Optional
 
-from typing import Any, Dict, Iterator, List
-from fairseq import metrics, search, tokenizer, utils
+import numpy as np
+import torch
+from omegaconf import II, MISSING
+from torch.utils.data import default_collate
 
-from fairseq.data import (
-    data_utils,
+from fairseq.fairseq import search
+from fairseq.fairseq.data import (
     Dictionary,
-    BaseWrapperDataset,
+)
+from fairseq.fairseq.data import (
     IdDataset,
     NumSamplesDataset,
-    OffsetTokensDataset,
-    StripTokenDataset,
-    NumelDataset,
     NestedDictionaryDataset,
-    SortDataset,
     NumelDataset,
     RightPadDataset,
-    LeftPadDataset,
     RawLabelDataset,
     FairseqDataset,
-    PrependTokenDataset,
-    ConcatSentencesDataset,
-    AppendTokenDataset,
-    PadDataset,
 )
-
-from fairseq.data import (
-    Dictionary,
-    TokenBlockDataset,
-    data_utils,
-    iterators,
-)
-
-from fairseq.tasks import register_task, FairseqDataclass, FairseqTask
-from fairseq.data.encoders.gpt2_bpe import GPT2BPE
-from dataclasses import dataclass, field
-from omegaconf import II, MISSING
-from typing import Optional
-from fairseq import utils
-
-from struprompting.tasks.fewshot_task import CB, BoolQ, COPA, MultiRC, HellaSwag, StoryCloze, Winogrande, Winograd, WiC, WSC, PIQA, OBQA, ARCC, ARCE, SST2, AGNews, SST5, TREC, RTE, IMDB, Subj, DBPedia, MR, NQ, WebQS, TriviaQA, RACEm, RACEh, COQA, SQuADv2, SQuAD
+from fairseq.fairseq.data.encoders.gpt2_bpe import GPT2BPE
+from fairseq.fairseq.tasks import register_task, FairseqDataclass, FairseqTask
+from fewshot_task import CB, BoolQ, COPA, MultiRC, HellaSwag, StoryCloze, Winogrande, Winograd, WiC, WSC, PIQA, OBQA, \
+    ARCC, ARCE, SST2, AGNews, SST5, TREC, RTE, IMDB, Subj, DBPedia, MR, NQ, WebQS, TriviaQA, RACEm, RACEh, COQA, \
+    SQuADv2, SQuAD
 
 DEFAULT_ENCODER_JSON = "https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/encoder.json"
 DEFAULT_VOCAB_BPE = "https://dl.fbaipublicfiles.com/fairseq/gpt2_bpe/vocab.bpe"
@@ -161,7 +142,7 @@ class FewshotEval(FairseqTask):
         return cls(cfg, dictionary, tokenizer)
 
     def build_model(self, cfg, from_checkpoint=False):
-        from fairseq import models
+        from fairseq.fairseq import models
 
         model = models.build_model(cfg, self, from_checkpoint)
         self.generator = self.build_generator([model], self.cfg)
@@ -215,16 +196,12 @@ class FewshotEval(FairseqTask):
         prefix_allowed_tokens_fn=None,
     ):
         if getattr(args, "score_reference", False):
-            from fairseq.sequence_scorer import SequenceScorer
+            from fairseq.fairseq.sequence_scorer import SequenceScorer
 
             return SequenceScorer(
                 self.dictionary,
                 compute_alignment=getattr(args, "print_alignment", False),
             )
-
-        from struprompting.models.unisequence_generator import (
-            UniSequenceGenerator,
-        )
 
         # Choose search strategy. Defaults to Beam Search.
         sampling = getattr(args, "sampling", False)
@@ -289,7 +266,7 @@ class FewshotEval(FairseqTask):
 
         extra_gen_cls_kwargs = extra_gen_cls_kwargs or {}
         if seq_gen_cls is None:
-            seq_gen_cls = UniSequenceGenerator
+            seq_gen_cls = models.unisequence_generator.UniSequenceGenerator
 
         return seq_gen_cls(
             models,
