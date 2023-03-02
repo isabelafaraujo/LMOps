@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-from fairseq.dataclass import ChoiceEnum, FairseqDataclass
+from fairseq.fairseq.dataclass import ChoiceEnum, FairseqDataclass
 from torch import Tensor
 
 import logging
@@ -12,21 +12,21 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from fairseq import checkpoint_utils
-from fairseq import utils
-from fairseq.utils import safe_getattr, safe_hasattr
+from fairseq.fairseq import checkpoint_utils
+from fairseq.fairseq import utils
+from fairseq.fairseq.utils import safe_getattr, safe_hasattr
 
-from fairseq.models import (
+from fairseq.fairseq.models import (
   BaseFairseqModel,
   register_model,
   register_model_architecture,
 )
-from fairseq.models.transformer_lm import (
+from fairseq.fairseq.models.transformer_lm import (
   TransformerLanguageModelConfig,
   TransformerLanguageModel,
   base_gpt3_architecture,
 )
-from fairseq.models.transformer.transformer_decoder import TransformerDecoder
+from fairseq.fairseq.models.transformer.transformer_decoder import TransformerDecoder
 
 
 @dataclass
